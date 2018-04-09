@@ -1,0 +1,136 @@
+#Test 1
+mtcars<-mtcars#Loading mtcars
+#Unfortunately it loaded with numeric variables, so we have to change some of them to factors manually
+mtcars$am<-as.factor(mtcars$am)
+mtcars$vs<-as.factor(mtcars$vs)
+#To make sure no missing value is loaded we can just use command bellow
+mtcars <- read_csv("C:/Users/Vardan/Desktop/mtcars.csv", 
+                   na = "null")
+
+#Test 2
+mtcarsn<-mtcars[,sapply(mtcars, is.numeric)] 
+# We create logical vector then use it to subset original dataset
+
+#Test 3
+#Create function which will output Standar deviation, Mean and Median
+func<- function(x) {
+  c(std = sd(x), mean = mean(x), median = median(x))
+}
+#Then use apply to apply it to dataset rowwise and columnwise
+apply(mtcarsn,2,func)
+apply(mtcarsn,1,func)
+
+#Test 4
+#Basic
+boxplot(mtcarsn)
+#More fancy
+library(ggplot2)
+library(reshape2)
+ggplot(data = melt(mtcarsn), aes(x=variable, y=value)) + geom_boxplot(aes(fill=variable))
+#According to boxplot "logic" yes there are some outliers in mpg,hp,wt,qsec,carb
+
+
+#Test 5
+library(dplyr)
+Q1<-apply(mtcarsn,2,quantile,0.75) #Creating quartile 1 vector
+Q3<-apply(mtcarsn,2,quantile,0.25) #Creating quartile 2 vector
+iqr<-apply(mtcarsn,2,IQR) #Creating interquartile range vector
+z1<-Q1-1.5*iqr #Defining range 1 
+z2<-Q3+1.5*iqr #Defining range 2
+mtcars2<-filter(mtcarsn,between(mtcarsn$mpg,z1[1],z2[1]) & between(mtcarsn$cyl,z1[2],z2[2])
+                & between(mtcarsn$disp,z1[3],z2[3]) & between(mtcarsn$hp,z1[4],z2[4]) & between(mtcarsn$drat,z1[5],z2[5]) 
+                & between(mtcarsn$wt,z1[6],z2[6]) & between(mtcarsn$qsec,z1[7],z2[7])
+                & between(mtcarsn$gear,z1[8],z2[8]) & between(mtcarsn$carb,z1[9],z2[9]))
+
+#Test 6
+nrow(mtcars)-nrow(mtcars2) #18 rows
+nrow(mtcarsn)-nrow(mtcars2) #18 rows
+
+
+#Test 7
+medvec<-apply(mtcarsn,2,median) #Creating median vector
+meanvec<-apply(mtcarsn,2,mean) #Creating mean vector
+logivec<-medvec>meanvec #Logical vector
+sel<-mtcarsn[,logivec, drop=F] #Using logical vector to subset dataset
+
+#Test 8
+#Ill use corrplot library to plot matrices
+library(corrplot)
+pears<-round(cor(mtcarsn,method='pearson'),digits=2) #Pearson correlation matrix
+spear<-round(cor(mtcarsn,method="spearman"),digits=2) #Spearman correlation matrix
+corrplot(pears) #Pearson corr matrix plot
+corrplot(spear) #Spearman corr matrix plot
+
+
+#Test 9
+library(tables)
+tabular( (am+1) ~(n=1) + Format(digits=2)*(mpg)*(sd), data=mtcars)
+
+
+#Test 10
+library(normtest)
+#ill do two tests: Shaprio and Jarque–Bera
+am1<-filter(mtcars,am==0)
+am2<-filter(mtcars,am==1)
+round(jb.norm.test(am1$mpg, nrepl=2000)$p.value,2)#p=0.89
+round(jb.norm.test(am2$mpg, nrepl=2000)$p.value,2)#p=0.49
+round(shapiro.test(am1$mpg)$p.value,2)#p=0.9
+round(shapiro.test(am2$mpg)$p.value,2)#p=0.54
+#According to both of them data is distributed normaly as p>0.05
+
+
+#Test 11
+var.test(am1$mpg,am2$mpg) # p=0.07
+#There not enough evidence that difference in variance is significant at 0.05 lvl
+
+
+#Test 12
+t.test(am1$mpg,am2$mpg)# p=0.001
+#There is enough evidence that means are not equal
+
+#Test 13
+# I am taking a guess i need to report the R^2 and adjusted R^2
+z<-lm(mpg~.,d=mtcars)
+summary(z)
+#Multiple R-squared:  0.869,	Adjusted R-squared:  0.8066 
+
+#Test 14
+# I am stuck on this problem, i really am
+# Problem is that assignment is not to just find "Best linear model" but "Best model" which makes it even harder
+# That's what makes statistics fun, there is no Best, every solution/model you find is just local maxima not global
+# And even then there are a lot of ways to define Best model r^2, BIC/AIC, precision on test sample 
+# I am not even speaking about computational efficiency, amount of dependent variables etc
+# I'll take a educated guess you dont expect hardcore stuff.
+
+
+# Dataset have multicolinearity problem
+# To battle multicolinearity and get significant variables(in regression above there are no significantt variables at all) 
+# We will use stepwise regression model.
+library(MASS)
+library(car)
+vif(z) 
+z <- lm(mpg ~ ., data = mtcars)
+stepwisemodel <- stepAIC(z)
+summary(stepwisemodel)
+vif(stepwisemodel)
+summary(stepwisemodel)$coefficients[,1]
+# We got good growth of adjusted r^2: new one=0.8336 old one=0.8066
+# All of selected variables(wt,qsec,am) are significant
+# This are coefficients
+# (Intercept)          wt        qsec         am1 
+# 9.617781   -3.916504    1.225886    2.935837 
+
+#Test 15
+lin<-function(x){
+  d<-cbind.data.frame(mtcars$mpg,x)# Binding our independent variable X and dependent variable from mtcars as dataframe
+  colnames(d)[1] <- "mpg"# Renaming our dependent variable to mpg
+  model<-lm(mpg~.,data=d) # Our linear model
+  Sign<-summary(model)$coefficients[,4]<0.05 # Creating logical vector 
+  result<-list(names(x),summary(model)$coefficients[,1],Sign) #List for result
+  names(result)<-c('Variable names','Coefficients', "Stat Significance") # Seting names to an object
+  return(result) 
+}
+
+#Example
+lin(data.frame(rnorm(32),rnorm(32)))
+
